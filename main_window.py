@@ -10,7 +10,8 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QFileDialog, QListWidget, QListWidgetItem, QSplitter, QGroupBox, 
     QComboBox, QLineEdit, QSlider, QCheckBox, QColorDialog, QTabWidget,
-    QDoubleSpinBox, QSpinBox, QMessageBox, QFrame, QGridLayout, QRadioButton, QInputDialog
+    QDoubleSpinBox, QSpinBox, QMessageBox, QFrame, QGridLayout, QRadioButton, QInputDialog,
+    QScrollArea
 )
 from PyQt5.QtGui import QPixmap, QFont, QIcon
 from PyQt5.QtCore import Qt, QSize, QPoint, pyqtSignal
@@ -69,7 +70,7 @@ class WatermarkPreview(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAlignment(Qt.AlignCenter)
-        self.setMinimumSize(400, 300)
+        self.setMinimumSize(600, 1000)  # 增大预览窗口初始尺寸
         self.setFrameStyle(QFrame.StyledPanel)
         
         # 拖拽状态
@@ -82,6 +83,14 @@ class WatermarkPreview(QLabel):
         """设置预览图片"""
         self.setPixmap(pixmap)
         self.setScaledContents(False)  # 保持原始比例
+        
+        # 调整标签大小以适应图片，确保滚动条能正常显示
+        self.setMinimumSize(pixmap.width(), pixmap.height())
+        self.resize(pixmap.width(), pixmap.height())
+        
+        # 如果存在预览容器，确保其尺寸也正确更新
+        if hasattr(self.parent(), 'resize'):
+            self.parent().resize(self.size())
     
     def mousePressEvent(self, event):
         """鼠标按下事件"""
@@ -232,8 +241,33 @@ class MainWindow(QMainWindow):
         center_panel = QWidget()
         center_layout = QVBoxLayout(center_panel)
         
+        # 创建滚动区域
+        self.scroll_area = QScrollArea()
+        # 设置滚动区域的尺寸
+        self.scroll_area.setMinimumSize(900, 600)  # 设置最小尺寸
+        # 或者使用固定尺寸
+        # self.scroll_area.setFixedSize(800, 600)
+        # 或者设置最大尺寸
+        # self.scroll_area.setMaximumSize(1000, 800)
+        # 或者使用resize方法
+        # self.scroll_area.resize(800, 600)
+        
+        self.scroll_area.setWidgetResizable(False)  # 设为False以允许内容大于视图
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        # 预览窗口容器
+        self.preview_container = QWidget()
+        self.preview_layout = QVBoxLayout(self.preview_container)
+        self.preview_layout.setAlignment(Qt.AlignCenter)
+        self.preview_layout.setContentsMargins(0, 0, 0, 0)
+        
         # 预览窗口
         self.preview_label = WatermarkPreview()
+        self.preview_layout.addWidget(self.preview_label)
+        
+        # 将容器设置为滚动区域的小部件
+        self.scroll_area.setWidget(self.preview_container)
         
         # 预设位置按钮
         position_group = QGroupBox("预设位置")
@@ -253,7 +287,8 @@ class MainWindow(QMainWindow):
             col = i % 3
             position_layout.addWidget(btn, row, col)
         
-        center_layout.addWidget(self.preview_label, 1)
+        # 将滚动区域添加到布局
+        center_layout.addWidget(self.scroll_area, 1)
         center_layout.addWidget(position_group)
         
         # 右侧设置面板
