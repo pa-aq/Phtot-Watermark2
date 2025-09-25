@@ -1,22 +1,36 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-主窗口 - 应用程序的主界面
+图片水印工具 - 主窗口界面
 """
 
 import os
 import sys
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, 
-    QLabel, QPushButton, QFileDialog, QTabWidget, QGroupBox, QLineEdit, 
-    QComboBox, QSlider, QCheckBox, QColorDialog, QSplitter, QMessageBox,
-    QFrame, QInputDialog, QSpinBox, QDoubleSpinBox, QGridLayout, QRadioButton
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
+    QFileDialog, QListWidget, QListWidgetItem, QSplitter, QGroupBox, 
+    QComboBox, QLineEdit, QSlider, QCheckBox, QColorDialog, QTabWidget,
+    QDoubleSpinBox, QSpinBox, QMessageBox, QFrame, QGridLayout, QRadioButton, QInputDialog
 )
-from PyQt5.QtGui import QPixmap, QIcon, QFont, QFontDatabase, QImage
-from PyQt5.QtCore import Qt, QSize, QPoint, pyqtSignal, pyqtSlot
+from PyQt5.QtGui import QPixmap, QFont, QIcon
+from PyQt5.QtCore import Qt, QSize, QPoint, pyqtSignal
+
 from image_processor import ImageProcessor
 from config_manager import ConfigManager, WatermarkConfig
 
+# 设置全局字体大小，增加UI元素尺寸
+def setup_global_font():
+    # 创建一个基础字体，将大小设置为较大值
+    font = QFont()
+    font.setPointSize(20)  # 增加字体大小
+    
+    # 应用全局字体
+    app = QApplication.instance()
+    if app:
+        app.setFont(font)
+
+# 确保QApplication已经导入
+from PyQt5.QtWidgets import QApplication
 
 class ImageListItem(QWidget):
     """图片列表项"""
@@ -31,7 +45,7 @@ class ImageListItem(QWidget):
         # 缩略图
         self.thumbnail_label = QLabel()
         self.thumbnail_label.setPixmap(thumbnail)
-        self.thumbnail_label.setFixedSize(64, 64)
+        self.thumbnail_label.setFixedSize(80, 80)  # 增大缩略图尺寸
         self.thumbnail_label.setScaledContents(True)
         
         # 文件名
@@ -44,7 +58,7 @@ class ImageListItem(QWidget):
         layout.addWidget(self.filename_label, 1)
         
         # 设置整体大小
-        self.setMinimumHeight(74)
+        self.setMinimumHeight(90)  # 增加列表项高度
 
 
 class WatermarkPreview(QLabel):
@@ -139,8 +153,43 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("图片水印工具")
         self.resize(1200, 800)
         
+        # 启用拖放功能
+        self.setAcceptDrops(True)
+        
         # 创建UI
         self.init_ui()
+        
+    def dragEnterEvent(self, event):
+        """拖拽进入事件"""
+        # 检查拖放的是否为文件
+        if event.mimeData().hasUrls():
+            # 检查是否只有一个文件且为图片文件
+            urls = event.mimeData().urls()
+            if len(urls) == 1:
+                file_path = urls[0].toLocalFile()
+                ext = os.path.splitext(file_path)[1].lower()
+                if ext in ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif']:
+                    event.acceptProposedAction()
+    
+    def dragMoveEvent(self, event):
+        """拖拽移动事件"""
+        # 与dragEnterEvent相同的检查
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if len(urls) == 1:
+                file_path = urls[0].toLocalFile()
+                ext = os.path.splitext(file_path)[1].lower()
+                if ext in ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif']:
+                    event.acceptProposedAction()
+    
+    def dropEvent(self, event):
+        """拖拽释放事件"""
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if len(urls) == 1:
+                file_path = urls[0].toLocalFile()
+                # 添加图片
+                self._add_image(file_path)
     
     def init_ui(self):
         """初始化用户界面"""
@@ -162,10 +211,12 @@ class MainWindow(QMainWindow):
         self.import_single_btn = QPushButton("导入单张图片")
         self.import_batch_btn = QPushButton("批量导入")
         self.import_folder_btn = QPushButton("导入文件夹")
+        self.clear_list_btn = QPushButton("清除列表")
         
         import_layout.addWidget(self.import_single_btn)
         import_layout.addWidget(self.import_batch_btn)
         import_layout.addWidget(self.import_folder_btn)
+        import_layout.addWidget(self.clear_list_btn)
         
         # 图片列表
         self.image_list = QListWidget()
@@ -491,6 +542,7 @@ class MainWindow(QMainWindow):
         self.import_single_btn.clicked.connect(self.import_single_image)
         self.import_batch_btn.clicked.connect(self.import_batch_images)
         self.import_folder_btn.clicked.connect(self.import_folder)
+        self.clear_list_btn.clicked.connect(self.clear_image_list)
         
         # 图片列表选择
         self.image_list.currentRowChanged.connect(self.on_image_selected)
@@ -876,3 +928,22 @@ class MainWindow(QMainWindow):
         
         # 接受关闭事件
         event.accept()
+
+
+    def clear_image_list(self):
+        """清除图片列表"""
+        # 确认对话框
+        reply = QMessageBox.question(
+            self, "确认", "确定要清除所有图片吗？",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            # 清空列表
+            self.image_list.clear()
+            # 清空图片数据
+            self.images = []
+            # 重置当前索引
+            self.current_image_index = -1
+            # 清空预览窗口
+            self.preview_label.clear()

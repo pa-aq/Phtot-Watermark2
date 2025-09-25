@@ -8,7 +8,7 @@ import sys
 import os
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
-from main_window import MainWindow
+from main_window import MainWindow, setup_global_font
 from config_manager import ConfigManager
 
 # 设置中文字体支持
@@ -27,6 +27,9 @@ def main():
     # 确保中文显示正常
     app.setApplicationName("图片水印工具")
     app.setApplicationDisplayName("图片水印工具")
+    
+    # 应用全局字体设置，增大UI元素尺寸
+    setup_global_font()
     
     # 初始化配置管理器
     config_manager = ConfigManager()
