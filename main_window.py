@@ -71,7 +71,7 @@ class WatermarkPreview(QLabel):
         super().__init__(parent)
         self.setAlignment(Qt.AlignCenter)
         self.setMinimumSize(600, 1000)  # 增大预览窗口初始尺寸
-        self.setFrameStyle(QFrame.StyledPanel)
+        self.setFrameStyle(QFrame.NoFrame)  # 使用NoFrame去除可能产生黑线的框架效果
         
         # 拖拽状态
         self.is_dragging = False
@@ -244,7 +244,7 @@ class MainWindow(QMainWindow):
         # 创建滚动区域
         self.scroll_area = QScrollArea()
         # 设置滚动区域的尺寸
-        self.scroll_area.setMinimumSize(900, 600)  # 设置最小尺寸
+        self.scroll_area.setMinimumSize(900, 400)  # 设置最小尺寸
         # 或者使用固定尺寸
         # self.scroll_area.setFixedSize(800, 600)
         # 或者设置最大尺寸
@@ -342,7 +342,7 @@ class MainWindow(QMainWindow):
         font_size_layout = QHBoxLayout()
         font_size_layout.addWidget(QLabel("字号:"))
         self.font_size_spin = QSpinBox()
-        self.font_size_spin.setRange(8, 200)
+        self.font_size_spin.setRange(8, 500)  # 增加最大值到500
         self.font_size_spin.setValue(self.current_config.font_size)
         font_size_layout.addWidget(self.font_size_spin)
         
@@ -355,6 +355,13 @@ class MainWindow(QMainWindow):
         font_style_layout.addWidget(self.bold_checkbox)
         font_style_layout.addWidget(self.italic_checkbox)
         font_style_layout.addStretch()
+        
+        # 连接信号
+        # 保留editingFinished信号以支持直接输入后按回车更新
+        self.font_size_spin.editingFinished.connect(self.update_watermark_preview)
+        # valueChanged信号已经在connect_signals方法中连接，避免重复连接
+        self.bold_checkbox.stateChanged.connect(self.update_watermark_preview)
+        self.italic_checkbox.stateChanged.connect(self.update_watermark_preview)
         
         # 字体颜色
         color_layout = QHBoxLayout()

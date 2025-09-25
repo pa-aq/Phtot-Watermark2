@@ -71,7 +71,39 @@ class ImageProcessor:
         except:
             # 如果指定的字体不可用，使用默认字体
             try:
-                font = ImageFont.load_default()
+                # 尝试使用系统默认字体并设置字号
+                # 先尝试获取默认字体路径
+                import os
+                import sys
+                # 根据不同操作系统尝试获取默认字体
+                if sys.platform == 'win32':
+                    # Windows默认字体
+                    default_fonts = [
+                        'C:/Windows/Fonts/arial.ttf',
+                        'C:/Windows/Fonts/simhei.ttf',  # 黑体
+                        'C:/Windows/Fonts/simsun.ttc'   # 宋体
+                    ]
+                    font_path = None
+                    for path in default_fonts:
+                        if os.path.exists(path):
+                            font_path = path
+                            break
+                    if font_path:
+                        font = ImageFont.truetype(font_path, config.font_size)
+                    else:
+                        # 作为最后的备选方案
+                        font = ImageFont.load_default()
+                else:
+                    # Linux/MacOS默认字体
+                    font = ImageFont.load_default()
+                    # 尝试使用默认字体并调整字号
+                    # 在Linux/Mac上，我们可以尝试使用PIL的Freetype字体
+                    try:
+                        from PIL import features
+                        if features.check('freetype'):
+                            font = ImageFont.truetype('Arial.ttf', config.font_size) if os.path.exists('Arial.ttf') else ImageFont.load_default()
+                    except:
+                        pass
             except:
                 font = None
         
@@ -189,6 +221,7 @@ class ImageProcessor:
     def process_image(self, image: Image.Image, config: WatermarkConfig) -> Image.Image:
         """处理图片，添加水印"""
         if config.watermark_type == "text":
+            print(f"添加文本水印: {config}")
             return self.add_text_watermark(image, config)
         elif config.watermark_type == "image" and config.image_path:
             return self.add_image_watermark(image, config.image_path, config)
