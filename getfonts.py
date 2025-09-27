@@ -156,5 +156,36 @@ def demo_manual_effects():
 #     print("成功从Windows字体目录加载字体")
 # except OSError:
 #     print("从Windows字体目录加载字体失败")
+
+def find_italic_windows_specific(font_path):
+    """
+    Windows系统特定的斜体字体查找
+    """
+    if not os.path.exists(font_path):
+        return None
+    
+    font_dir = os.path.dirname(font_path)
+    font_filename = os.path.basename(font_path)
+    
+    # 通用Windows模式
+    patterns = [
+        font_filename.replace('.ttf', 'i.ttf'),
+        font_filename.replace('.TTF', 'I.TTF'),
+        font_filename.replace('.ttf', 'it.ttf'),
+        font_filename.replace('.ttf', 'italic.ttf'),
+    ]
+    
+    for pattern in patterns:
+        if pattern == font_filename: continue
+        print(f"pattern: {pattern}")
+        italic_path = os.path.join(font_dir, pattern)
+        if os.path.exists(italic_path):
+            print(f"从字体目录中找到了斜体字体：{italic_path}")
+            return italic_path
+    
+    return None
+
+
  
- 
+font_path='C:\\Windows\\Fonts\\simfang.ttf'
+print(find_italic_windows_specific(font_path))

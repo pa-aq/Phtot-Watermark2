@@ -201,21 +201,26 @@ class ImageProcessor:
                 temp_img = Image.new('RGBA', temp_size, (255, 255, 255, 0))
                 temp_draw = ImageDraw.Draw(temp_img)
                 
+                # 为斜体文本增加透明度 - 这里将透明度增大15%使其更不透明
+                italic_opacity_factor = 80  # 透明度系数，大于1表示更不透明（增大透明度）
+                italic_alpha = min(255, int(255 * config.opacity*1.1 + italic_opacity_factor))  # 确保不超过255
+                italic_color_with_opacity = (*color, italic_alpha)
+                
                 # 首先处理粗体效果（如果需要）
                 if config.font_bold:
                     # 增强粗体效果：增加偏移量和绘制更多方向
                     # 模拟粗体：在原位置的上下左右及对角线各绘制一次
-                    temp_draw.text((40-2, 20-2), text, font=font, fill=color_with_opacity)
-                    temp_draw.text((40+2, 20-2), text, font=font, fill=color_with_opacity)
-                    temp_draw.text((40-2, 20+2), text, font=font, fill=color_with_opacity)
-                    temp_draw.text((40+2, 20+2), text, font=font, fill=color_with_opacity)
-                    temp_draw.text((40-1, 20), text, font=font, fill=color_with_opacity)
-                    temp_draw.text((40+1, 20), text, font=font, fill=color_with_opacity)
-                    temp_draw.text((40, 20-1), text, font=font, fill=color_with_opacity)
-                    temp_draw.text((40, 20+1), text, font=font, fill=color_with_opacity)
+                    temp_draw.text((40-2, 20-2), text, font=font, fill=italic_color_with_opacity)
+                    temp_draw.text((40+2, 20-2), text, font=font, fill=italic_color_with_opacity)
+                    temp_draw.text((40-2, 20+2), text, font=font, fill=italic_color_with_opacity)
+                    temp_draw.text((40+2, 20+2), text, font=font, fill=italic_color_with_opacity)
+                    temp_draw.text((40-1, 20), text, font=font, fill=italic_color_with_opacity)
+                    temp_draw.text((40+1, 20), text, font=font, fill=italic_color_with_opacity)
+                    temp_draw.text((40, 20-1), text, font=font, fill=italic_color_with_opacity)
+                    temp_draw.text((40, 20+1), text, font=font, fill=italic_color_with_opacity)
                 
                 # 绘制主文本到临时图像 - 进一步增加左边距
-                temp_draw.text((40, 20), text, font=font, fill=color_with_opacity)
+                temp_draw.text((40, 20), text, font=font, fill=italic_color_with_opacity)
                 
                 # 应用斜体变换 - 减少倾斜程度
                 italic_img = temp_img.transform(
