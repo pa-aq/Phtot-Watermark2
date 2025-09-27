@@ -6,6 +6,7 @@
 
 import os
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
+from PIL import ImageTransform
 from PyQt5.QtGui import QPixmap, QImage
 from typing import Optional, Tuple, List
 from config_manager import WatermarkConfig
@@ -77,28 +78,21 @@ class ImageProcessor:
         # 尝试直接使用配置中的字体路径
         try:
             if font_path:
-                print(f"尝试加载字体路径: {font_path}")
-                # 直接使用路径加载字体
+                # 直接使用路径加载字体，不再尝试查找粗体/斜体版本
                 font = ImageFont.truetype(font_path, config.font_size)
-                print(f"成功加载字体: {font_path}")
-                
-                # 测试字体是否支持中文
-                try:
-                    test_draw = ImageDraw.Draw(Image.new('RGBA', (1, 1), (255, 255, 255, 0)))
-                    test_text = "测试"
-                    # 尝试使用textbbox或textsize获取文本尺寸
-                    try:
-                        test_draw.textbbox((0, 0), test_text, font=font)
-                    except:
-                        test_draw.textsize(test_text, font=font)
-                    print("字体支持中文")
-                except Exception as e:
-                    print(f"字体可能不支持中文: {e}，尝试使用系统中文字体")
-                    font = None
             else:
-                print("未指定字体路径")
+                # 如果没有指定字体路径，尝试使用默认字体
+                font = ImageFont.load_default()
+                print("使用默认字体")
         except Exception as e:
             print(f"加载指定字体路径失败: {e}")
+            # 加载失败，使用默认字体
+            try:
+                font = ImageFont.load_default()
+                print("回退到默认字体")
+            except:
+                # 如果连默认字体都加载不了，设置为None
+                font = None
         
         # 如果指定字体失败或不支持中文，尝试使用系统中文字体
         if font is None:
@@ -119,9 +113,6 @@ class ImageProcessor:
                 'C:/Windows/Fonts/STXIHEI.ttf',     # 细黑
                 'C:/Windows/Fonts/STXINGKA.ttf',    # 行楷
                 'C:/Windows/Fonts/STFANGSO.ttf',    # 仿宋
-                # 当前目录可能存在的字体文件
-                'simhei.ttf',
-                'msyh.ttc'
             ]
             
             # 遍历查找可用的中文字体
@@ -132,15 +123,9 @@ class ImageProcessor:
                         font_path = path
                         font = ImageFont.truetype(path, config.font_size)
                         # 测试字体是否支持中文
-                        test_draw = ImageDraw.Draw(Image.new('RGBA', (1, 1), (255, 255, 255, 0)))
-                        test_text = "测试"
-                        # 尝试使用textbbox或textsize获取文本尺寸
-                        try:
-                            test_draw.textbbox((0, 0), test_text, font=font)
-                        except:
-                            test_draw.textsize(test_text, font=font)
-                        print("字体支持中文，使用该字体")
-                        break
+                        if self.check_chinese_support_fonttools(font_path):
+                            print("字体支持中文，使用该字体")
+                            break
                 except Exception as e:
                     print(f"尝试加载字体 {path} 失败: {e}")
         
@@ -174,16 +159,13 @@ class ImageProcessor:
             text_width = len(text) * 12
             text_height = 20
         
-        # print(f"文本尺寸: 宽={text_width}, 高={text_height}")
-        
         # 计算水印位置
         pos_x = int((image.width - text_width) * config.position_x)
         pos_y = int((image.height - text_height) * config.position_y)
         
-        # print(f"水印位置: x={pos_x}, y={pos_y}")
-        
         # 解析颜色
         color = self._parse_color(config.font_color)
+        color_with_opacity = (*color, int(255 * config.opacity))
         
         # 添加描边效果
         if config.stroke_enabled:
@@ -211,30 +193,115 @@ class ImageProcessor:
             )
         
         # 绘制主文本
-        draw.text(
-            (pos_x, pos_y),
-            text,
-            font=font,
-            fill=(*color, int(255 * config.opacity))
-        )
-        
-        # 旋转水印（如果需要）
-        if config.rotation != 0:
-            watermark = watermark.rotate(config.rotation, expand=1, fillcolor=(255, 255, 255, 0))
-            # 重新计算位置
-            new_pos_x = pos_x - (watermark.width - image.width) // 2
-            new_pos_y = pos_y - (watermark.height - image.height) // 2
-            result = Image.new('RGBA', watermark.size, (255, 255, 255, 0))
-            result.paste(image, (new_pos_x, new_pos_y))
-            result.alpha_composite(watermark)
-            # 裁剪回原图尺寸
-            return result.crop((new_pos_x, new_pos_y, new_pos_x + image.width, new_pos_y + image.height))
+        if font:
+            # 处理斜体效果 - 使用临时图像旋转实现
+            if config.font_italic:
+                # 创建一个临时图像来绘制斜体文本 - 进一步增加左侧空间
+                temp_size = (text_width + 80, text_height + 40)  # 增加左侧边距
+                temp_img = Image.new('RGBA', temp_size, (255, 255, 255, 0))
+                temp_draw = ImageDraw.Draw(temp_img)
+                
+                # 首先处理粗体效果（如果需要）
+                if config.font_bold:
+                    # 增强粗体效果：增加偏移量和绘制更多方向
+                    # 模拟粗体：在原位置的上下左右及对角线各绘制一次
+                    temp_draw.text((40-2, 20-2), text, font=font, fill=color_with_opacity)
+                    temp_draw.text((40+2, 20-2), text, font=font, fill=color_with_opacity)
+                    temp_draw.text((40-2, 20+2), text, font=font, fill=color_with_opacity)
+                    temp_draw.text((40+2, 20+2), text, font=font, fill=color_with_opacity)
+                    temp_draw.text((40-1, 20), text, font=font, fill=color_with_opacity)
+                    temp_draw.text((40+1, 20), text, font=font, fill=color_with_opacity)
+                    temp_draw.text((40, 20-1), text, font=font, fill=color_with_opacity)
+                    temp_draw.text((40, 20+1), text, font=font, fill=color_with_opacity)
+                
+                # 绘制主文本到临时图像 - 进一步增加左边距
+                temp_draw.text((40, 20), text, font=font, fill=color_with_opacity)
+                
+                # 应用斜体变换 - 减少倾斜程度
+                italic_img = temp_img.transform(
+                    temp_size,  # 使用完整的临时图像大小
+                    ImageTransform.AffineTransform((1, 15/45, 0, 0, 1, 0))  # 减少倾斜因子
+                )
+            
+                # 计算放置位置并粘贴到水印层 - 进一步左移
+                paste_x = pos_x - 20
+                paste_y = pos_y - 10
+                
+                watermark.paste(italic_img, (paste_x, paste_y), italic_img)
+            else:
+                # 不是斜体，直接绘制
+                # 处理粗体效果 - 通过多次绘制模拟粗体
+                if config.font_bold:
+                    # 增强粗体效果：增加偏移量和绘制更多方向
+                    # 模拟粗体：在原位置的上下左右及对角线各绘制一次
+                    draw.text((pos_x-2, pos_y-2), text, font=font, fill=color_with_opacity)
+                    draw.text((pos_x+2, pos_y-2), text, font=font, fill=color_with_opacity)
+                    draw.text((pos_x-2, pos_y+2), text, font=font, fill=color_with_opacity)
+                    draw.text((pos_x+2, pos_y+2), text, font=font, fill=color_with_opacity)
+                    draw.text((pos_x-1, pos_y), text, font=font, fill=color_with_opacity)
+                    draw.text((pos_x+1, pos_y), text, font=font, fill=color_with_opacity)
+                    draw.text((pos_x, pos_y-1), text, font=font, fill=color_with_opacity)
+                    draw.text((pos_x, pos_y+1), text, font=font, fill=color_with_opacity)
+                
+                # 绘制主文本
+                draw.text((pos_x, pos_y), text, font=font, fill=color_with_opacity)
         else:
-            # 合成图片
-            result = Image.new('RGBA', image.size, (255, 255, 255, 0))
-            result.paste(image, (0, 0))
-            result.alpha_composite(watermark)
-            return result
+            # 如果没有字体，使用PIL的默认文本绘制
+            draw.text((pos_x, pos_y), text, fill=color_with_opacity)
+        
+        # 处理文字水印旋转 - 围绕文字中心旋转
+        if config.rotation != 0 and font:
+            # 计算文字中心位置
+            text_center_x = pos_x + text_width // 2
+            text_center_y = pos_y + text_height // 2
+            
+            # 创建一个足够大的临时图像来容纳旋转后的文本
+            # 计算旋转所需的最小尺寸（使用三角函数计算斜边长度）
+            import math
+            angle_rad = math.radians(abs(config.rotation))
+            max_dim = max(text_width, text_height)
+            temp_size = (int(max_dim * math.sqrt(2)) + 20, int(max_dim * math.sqrt(2)) + 20)  # 增加一些边距
+            
+            # 创建临时图像并绘制文本在中心位置
+            temp_watermark = Image.new('RGBA', temp_size, (255, 255, 255, 0))
+            temp_draw = ImageDraw.Draw(temp_watermark)
+            
+            # 在临时图像的中心绘制文本
+            temp_center_x = temp_size[0] // 2
+            temp_center_y = temp_size[1] // 2
+            
+            # 计算在临时图像中的绘制位置，使文本居中
+            draw_x = temp_center_x - text_width // 2
+            draw_y = temp_center_y - text_height // 2
+            
+            # 绘制文本到临时图像
+            temp_draw.text((draw_x, draw_y), text, font=font, fill=color_with_opacity)
+            
+            # 对临时图像围绕其中心旋转
+            rotated_watermark = temp_watermark.rotate(config.rotation, expand=1, fillcolor=(255, 255, 255, 0))
+            
+            # 清除原始水印层
+            watermark = Image.new('RGBA', image.size, (255, 255, 255, 0))
+            
+            # 计算旋转后的水印在原始图像上的放置位置
+            paste_x = text_center_x - rotated_watermark.width // 2
+            paste_y = text_center_y - rotated_watermark.height // 2
+            
+            # 粘贴旋转后的水印到原始水印层
+            watermark.paste(rotated_watermark, (paste_x, paste_y), rotated_watermark)
+        
+        # 合成图片
+        result = Image.new('RGBA', image.size, (255, 255, 255, 0))
+        result.paste(image, (0, 0))
+        result.alpha_composite(watermark)
+        
+        # 如果图像模式不是RGBA，转换为RGB
+        if result.mode == 'RGBA':
+            background = Image.new('RGB', result.size, (255, 255, 255))
+            background.paste(result, mask=result.split()[3])
+            result = background
+        
+        return result
     
     def add_image_watermark(self, image: Image.Image, watermark_image_path: str, config: WatermarkConfig) -> Image.Image:
         """添加图片水印"""

@@ -90,19 +90,71 @@ from PIL import Image, ImageDraw, ImageFont
 #     image.show()
 
 # create_chinese_text_image()
-print(get_chinese_fonts_fast())
+
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
+import os
+
+def create_bold_effect(image, text, font, fill='black', bold_strength=2):
+    """通过多次绘制创建粗体效果"""
+    draw = ImageDraw.Draw(image)
+    
+    # 原始文本
+    draw.text((10, 10), text, fill=fill, font=font)
+    
+    # 粗体效果：多次偏移绘制
+    for dx in range(1, bold_strength + 1):
+        for dy in range(1, bold_strength + 1):
+            draw.text((10 + dx, 10 + dy), text, fill=fill, font=font)
+            draw.text((10 - dx, 10 - dy), text, fill=fill, font=font)
+
+def create_italic_effect(draw, text, position, font, fill='black', italic_angle=15):
+    """创建斜体效果（通过剪切变换）"""
+    from PIL import ImageTransform
+    
+    # 获取文本尺寸
+    bbox = font.getbbox(text)
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    
+    # 创建临时图像绘制文本
+    temp_img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+    temp_draw = ImageDraw.Draw(temp_img)
+    temp_draw.text((0, 0), text, fill=fill, font=font)
+    
+    # 应用斜体变换
+    italic_img = temp_img.transform(
+        (width, height), 
+        ImageTransform.AffineTransform((1, italic_angle/45, 0, 0, 1, 0))
+    )
+    
+    # 粘贴到原图像
+    image.paste(italic_img, position, italic_img)
+
+# 使用示例
+def demo_manual_effects():
+    image = Image.new('RGB', (400, 200), 'white')
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.truetype("arial.ttf", 24)
+    
+    # 正常文本
+    draw.text((10, 10), "正常文本", fill='black', font=font)
+    
+    # 手动粗体
+    create_bold_effect(image, "手动粗体", font, 'blue')
+    
+    # 手动斜体
+    create_italic_effect(draw, "手动斜体", (10, 80), font, 'red')
+    
+    image.save("manual_effects.png")
+    image.show()
 # fonts = fm.findSystemFonts(fontpaths=None, fontext='ttf')
 # font_family = 'simfang'
 # try:
 #     font_path='C:\\Windows\\Fonts\\' + font_family+'.ttf'
 #     print(font_path)
-#     font = ImageFont.truetype(font_path,
-#                             20)
+#     font = ImageFont.truetype(font_path,20)
 #     print("成功从Windows字体目录加载字体")
 # except OSError:
 #     print("从Windows字体目录加载字体失败")
  
-# # 如果你想获取更加详细的字体名称而不是路径，你可以使用以下代码
-# font_names = [matplotlib.font_manager.FontProperties(fname=font).get_name() for font in fonts]
-# unique_font_names = sorted(set(font_names))  # 去除重复的字体名称并排序
  
