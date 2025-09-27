@@ -203,7 +203,7 @@ class ImageProcessor:
                 
                 # 为斜体文本增加透明度 - 这里将透明度增大15%使其更不透明
                 italic_opacity_factor = 80  # 透明度系数，大于1表示更不透明（增大透明度）
-                italic_alpha = min(255, int(255 * config.opacity*1.1 + italic_opacity_factor))  # 确保不超过255
+                italic_alpha = min(255, int(255 * config.opacity*1.05 + italic_opacity_factor))  # 确保不超过255
                 italic_color_with_opacity = (*color, italic_alpha)
                 
                 # 首先处理粗体效果（如果需要）
@@ -256,44 +256,201 @@ class ImageProcessor:
         
         # 处理文字水印旋转 - 围绕文字中心旋转
         if config.rotation != 0 and font:
-            # 计算文字中心位置
+            # 计算原始文字中心位置
             text_center_x = pos_x + text_width // 2
             text_center_y = pos_y + text_height // 2
             
-            # 创建一个足够大的临时图像来容纳旋转后的文本
-            # 计算旋转所需的最小尺寸（使用三角函数计算斜边长度）
-            import math
-            angle_rad = math.radians(abs(config.rotation))
-            max_dim = max(text_width, text_height)
-            temp_size = (int(max_dim * math.sqrt(2)) + 20, int(max_dim * math.sqrt(2)) + 20)  # 增加一些边距
-            
-            # 创建临时图像并绘制文本在中心位置
-            temp_watermark = Image.new('RGBA', temp_size, (255, 255, 255, 0))
-            temp_draw = ImageDraw.Draw(temp_watermark)
-            
-            # 在临时图像的中心绘制文本
-            temp_center_x = temp_size[0] // 2
-            temp_center_y = temp_size[1] // 2
-            
-            # 计算在临时图像中的绘制位置，使文本居中
-            draw_x = temp_center_x - text_width // 2
-            draw_y = temp_center_y - text_height // 2
-            
-            # 绘制文本到临时图像
-            temp_draw.text((draw_x, draw_y), text, font=font, fill=color_with_opacity)
-            
-            # 对临时图像围绕其中心旋转
-            rotated_watermark = temp_watermark.rotate(config.rotation, expand=1, fillcolor=(255, 255, 255, 0))
-            
-            # 清除原始水印层
+            # 清除之前绘制的内容，重新创建水印层
             watermark = Image.new('RGBA', image.size, (255, 255, 255, 0))
             
-            # 计算旋转后的水印在原始图像上的放置位置
-            paste_x = text_center_x - rotated_watermark.width // 2
-            paste_y = text_center_y - rotated_watermark.height // 2
+            # 计算旋转所需的最小临时图像大小
+            import math
+            angle_rad = math.radians(abs(config.rotation))
+            # 使用三角函数计算旋转后所需的宽高
+            temp_width = int(text_width * math.cos(angle_rad) + text_height * math.sin(angle_rad)) + 100
+            temp_height = int(text_height * math.cos(angle_rad) + text_width * math.sin(angle_rad)) + 100
+            temp_size = (max(temp_width, temp_height), max(temp_width, temp_height))  # 确保是正方形
             
-            # 粘贴旋转后的水印到原始水印层
-            watermark.paste(rotated_watermark, (paste_x, paste_y), rotated_watermark)
+            # 创建临时图像
+            temp_img = Image.new('RGBA', temp_size, (255, 255, 255, 0))
+            temp_draw = ImageDraw.Draw(temp_img)
+            
+            # 临时图像中心点
+            temp_center = temp_size[0] // 2
+            
+            # 在临时图像中心绘制文本
+            # 计算文本绘制位置，使文本在临时图像中居中
+            if config.font_italic:
+                # 对于斜体文本，先创建中间图像应用斜体变换
+                italic_temp_size = (text_width + 50, text_height + 50)
+                italic_temp = Image.new('RGBA', italic_temp_size, (255, 255, 255, 0))
+                italic_draw = ImageDraw.Draw(italic_temp)
+                
+                # 为斜体文本增加透明度
+                italic_opacity_factor = 80
+                italic_alpha = min(255, int(255 * config.opacity*1.05 + italic_opacity_factor))
+                italic_color_with_opacity = (*color, italic_alpha)
+                
+                # 斜体文本中心位置
+                italic_center_x = italic_temp_size[0] // 2
+                italic_center_y = italic_temp_size[1] // 2
+                
+                # 先添加描边效果（在粗体和主文本之前）
+                if config.stroke_enabled:
+                    stroke_color = self._parse_color(config.stroke_color)
+                    stroke_width = config.stroke_width
+                    # 描边只使用外边框，不是整个区域
+                    for x_offset in range(-stroke_width, stroke_width + 1):
+                        for y_offset in range(-stroke_width, stroke_width + 1):
+                            # 只绘制真正的边框，不是整个方形区域
+                            if abs(x_offset) == stroke_width or abs(y_offset) == stroke_width:
+                                italic_draw.text(
+                                    (italic_center_x - text_width // 2 + x_offset, 
+                                     italic_center_y - text_height // 2 + y_offset), 
+                                    text, font=font, fill=(*stroke_color, 255)
+                                )
+                
+                # 添加阴影效果（在主文本之前）
+                if config.shadow_enabled:
+                    shadow_color = self._parse_color(config.shadow_color)
+                    italic_draw.text(
+                        (italic_center_x - text_width // 2 + config.shadow_offset_x, 
+                         italic_center_y - text_height // 2 + config.shadow_offset_y), 
+                        text, font=font, fill=(*shadow_color, 255)
+                    )
+                
+                # 粗体效果
+                if config.font_bold:
+                    # 在原位置周围多个方向绘制文本以模拟粗体
+                    directions = [(-1, -1), (1, -1), (-1, 1), (1, 1), (-1, 0), (1, 0), (0, -1), (0, 1)]
+                    for dx, dy in directions:
+                        italic_draw.text(
+                            (italic_center_x - text_width // 2 + dx, 
+                             italic_center_y - text_height // 2 + dy), 
+                            text, font=font, fill=italic_color_with_opacity
+                        )
+                
+                # 最后绘制主文本，确保它在所有效果之上
+                italic_draw.text(
+                    (italic_center_x - text_width // 2, italic_center_y - text_height // 2), 
+                    text, font=font, fill=italic_color_with_opacity
+                )
+                
+                # 应用斜体变换
+                italic_img = italic_temp.transform(
+                    italic_temp_size,
+                    ImageTransform.AffineTransform((1, 15/45, 0, 0, 1, 0))
+                )
+                
+                # 将斜体文本粘贴到主临时图像中心
+                paste_x = temp_center - italic_img.width // 2
+                paste_y = temp_center - italic_img.height // 2
+                temp_img.paste(italic_img, (paste_x, paste_y), italic_img)
+            else:
+                # 非斜体文本
+                # 先添加描边效果（在所有其他效果之前）
+                if config.stroke_enabled:
+                    stroke_color = self._parse_color(config.stroke_color)
+                    stroke_width = config.stroke_width
+                    # 描边只使用外边框，不是整个区域
+                    for x_offset in range(-stroke_width, stroke_width + 1):
+                        for y_offset in range(-stroke_width, stroke_width + 1):
+                            # 只绘制真正的边框，不是整个方形区域
+                            if abs(x_offset) == stroke_width or abs(y_offset) == stroke_width:
+                                temp_draw.text(
+                                    (temp_center - text_width // 2 + x_offset, 
+                                     temp_center - text_height // 2 + y_offset), 
+                                    text, font=font, fill=(*stroke_color, 255)
+                                )
+                
+                # 添加阴影效果（在主文本之前）
+                if config.shadow_enabled:
+                    shadow_color = self._parse_color(config.shadow_color)
+                    temp_draw.text(
+                        (temp_center - text_width // 2 + config.shadow_offset_x, 
+                         temp_center - text_height // 2 + config.shadow_offset_y),
+                        text,
+                        font=font,
+                        fill=(*shadow_color, 255)
+                    )
+                
+                # 粗体效果
+                if config.font_bold:
+                    directions = [(-1, -1), (1, -1), (-1, 1), (1, 1), (-1, 0), (1, 0), (0, -1), (0, 1)]
+                    for dx, dy in directions:
+                        temp_draw.text(
+                            (temp_center - text_width // 2 + dx, 
+                             temp_center - text_height // 2 + dy), 
+                            text, font=font, fill=color_with_opacity
+                        )
+                
+                # 最后绘制主文本，确保它在所有效果之上
+                temp_draw.text(
+                    (temp_center - text_width // 2, temp_center - text_height // 2), 
+                    text, font=font, fill=color_with_opacity
+                )
+            
+            # 旋转临时图像，确保expand=True以包含整个旋转结果
+            rotated_img = temp_img.rotate(config.rotation, expand=True, fillcolor=(255, 255, 255, 0))
+            
+            # 计算旋转后的图像放置位置，确保旋转中心与原始文本中心重合
+            paste_x = text_center_x - rotated_img.width // 2
+            paste_y = text_center_y - rotated_img.height // 2
+            
+            # 粘贴旋转后的图像到水印层
+            watermark.paste(rotated_img, (paste_x, paste_y), rotated_img)
+        else:
+            # 非旋转情况下，也需要确保正确的绘制顺序
+            # 重新绘制水印层，确保正确的效果顺序
+            if config.stroke_enabled and font:
+                # 移除之前绘制的内容
+                watermark = Image.new('RGBA', image.size, (255, 255, 255, 0))
+                draw = ImageDraw.Draw(watermark)
+                
+                # 重新按正确顺序绘制所有效果
+                # 1. 先添加描边效果
+                stroke_color = self._parse_color(config.stroke_color)
+                stroke_width = config.stroke_width
+                # 描边只使用外边框，不是整个区域
+                for x_offset in range(-stroke_width, stroke_width + 1):
+                    for y_offset in range(-stroke_width, stroke_width + 1):
+                        # 只绘制真正的边框，不是整个方形区域
+                        if abs(x_offset) == stroke_width or abs(y_offset) == stroke_width:
+                            draw.text(
+                                (pos_x + x_offset, pos_y + y_offset),
+                                text,
+                                font=font,
+                                fill=(*stroke_color, 255)
+                            )
+                
+                # 2. 然后添加阴影效果
+                if config.shadow_enabled:
+                    shadow_color = self._parse_color(config.shadow_color)
+                    draw.text(
+                        (pos_x + config.shadow_offset_x, pos_y + config.shadow_offset_y),
+                        text,
+                        font=font,
+                        fill=(*shadow_color, 255)
+                    )
+                
+                # 3. 处理粗体效果
+                if config.font_bold:
+                    directions = [(-1, -1), (1, -1), (-1, 1), (1, 1), (-1, 0), (1, 0), (0, -1), (0, 1)]
+                    for dx, dy in directions:
+                        draw.text(
+                            (pos_x + dx, pos_y + dy),
+                            text,
+                            font=font,
+                            fill=color_with_opacity
+                        )
+                
+                # 4. 最后绘制主文本
+                draw.text(
+                    (pos_x, pos_y),
+                    text,
+                    font=font,
+                    fill=color_with_opacity
+                )
         
         # 合成图片
         result = Image.new('RGBA', image.size, (255, 255, 255, 0))
