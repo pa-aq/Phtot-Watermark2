@@ -70,7 +70,7 @@ class WatermarkPreview(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAlignment(Qt.AlignCenter)
-        self.setMinimumSize(600, 1000)  # 增大预览窗口初始尺寸
+        self.setMinimumSize(1000, 1000)  # 增大预览窗口初始宽度和尺寸
         self.setFrameStyle(QFrame.NoFrame)  # 使用NoFrame去除可能产生黑线的框架效果
         
         # 拖拽状态
@@ -244,7 +244,7 @@ class MainWindow(QMainWindow):
         # 创建滚动区域
         self.scroll_area = QScrollArea()
         # 设置滚动区域的尺寸
-        self.scroll_area.setMinimumSize(900, 400)  # 设置最小尺寸
+        self.scroll_area.setMinimumSize(1200, 400)  # 设置最小尺寸，增加宽度
         # 或者使用固定尺寸
         # self.scroll_area.setFixedSize(800, 600)
         # 或者设置最大尺寸
@@ -332,10 +332,26 @@ class MainWindow(QMainWindow):
         font_layout.addWidget(QLabel("字体:"))
         self.font_combo = QComboBox()
         # 添加系统字体
-        fonts = self.image_processor.get_supported_fonts()
-        self.font_combo.addItems(fonts)
-        if self.current_config.font_family in fonts:
-            self.font_combo.setCurrentText(self.current_config.font_family)
+        self.fonts = self.image_processor.get_supported_fonts()
+        # 存储字体信息映射（名称到路径）
+        self.font_name_to_path = {}
+        for font_info in self.fonts:
+            self.font_combo.addItem(font_info['name'])
+            self.font_name_to_path[font_info['name']] = font_info['path']
+        # 设置默认选中项
+        if self.current_config.font_family:
+            # 检查是否是名称或路径
+            if any(font_info['path'] == self.current_config.font_family for font_info in self.fonts):
+                # 如果是路径，查找对应的名称
+                for font_info in self.fonts:
+                    if font_info['path'] == self.current_config.font_family:
+                        index = self.font_combo.findText(font_info['name'])
+                        if index >= 0:
+                            self.font_combo.setCurrentIndex(index)
+                        break
+            elif self.current_config.font_family in self.font_name_to_path:
+                # 如果是名称
+                self.font_combo.setCurrentText(self.current_config.font_family)
         font_layout.addWidget(self.font_combo, 1)
         
         # 字号
@@ -726,7 +742,12 @@ class MainWindow(QMainWindow):
         
         # 文本设置
         self.current_config.text_content = self.text_input.text()
-        self.current_config.font_family = self.font_combo.currentText()
+        # 存储字体路径而不是字体名称
+        selected_font_name = self.font_combo.currentText()
+        if selected_font_name in self.font_name_to_path:
+            self.current_config.font_family = self.font_name_to_path[selected_font_name]
+        else:
+            self.current_config.font_family = selected_font_name  # 回退方案
         self.current_config.font_size = self.font_size_spin.value()
         self.current_config.font_bold = self.bold_checkbox.isChecked()
         self.current_config.font_italic = self.italic_checkbox.isChecked()
@@ -848,9 +869,23 @@ class MainWindow(QMainWindow):
         self.text_input.setText(self.current_config.text_content)
         
         # 设置字体（如果存在）
-        index = self.font_combo.findText(self.current_config.font_family)
-        if index >= 0:
-            self.font_combo.setCurrentIndex(index)
+        if hasattr(self, 'font_name_to_path') and self.current_config.font_family:
+            # 尝试根据路径查找字体名称
+            font_name = None
+            for name, path in self.font_name_to_path.items():
+                if path == self.current_config.font_family:
+                    font_name = name
+                    break
+            
+            if font_name:
+                index = self.font_combo.findText(font_name)
+                if index >= 0:
+                    self.font_combo.setCurrentIndex(index)
+            else:
+                # 如果找不到对应的路径，尝试作为名称查找
+                index = self.font_combo.findText(self.current_config.font_family)
+                if index >= 0:
+                    self.font_combo.setCurrentIndex(index)
         
         self.font_size_spin.setValue(self.current_config.font_size)
         self.bold_checkbox.setChecked(self.current_config.font_bold)
@@ -877,6 +912,33 @@ class MainWindow(QMainWindow):
         """选择输出目录"""
         directory = QFileDialog.getExistingDirectory(self, "选择输出文件夹")
         if directory:
+            # 检查选择的目录是否与任何导入图片的目录相同
+            is_same_as_source = False
+            source_dirs = set()
+            
+            for file_path, _ in self.images:
+                source_dir = os.path.dirname(file_path)
+                source_dirs.add(source_dir)
+                
+                # 比较两个路径是否相同（规范化路径后比较）
+                if os.path.normpath(directory) == os.path.normpath(source_dir):
+                    is_same_as_source = True
+                    break
+            
+            # 如果选择的目录与原图目录相同，显示确认对话框
+            if is_same_as_source:
+                reply = QMessageBox.question(
+                    self,
+                    "确认导出",
+                    "选择的文件夹与原图文件夹相同，可能会覆盖原文件。确定要导出到该文件夹吗？",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No  # 默认选择"否"
+                )
+                
+                # 如果用户选择"否"，不更新输出目录
+                if reply != QMessageBox.Yes:
+                    return
+            
             self.output_dir_input.setText(directory)
     
     def update_export_options(self):

@@ -9,6 +9,8 @@ from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 from PyQt5.QtGui import QPixmap, QImage
 from typing import Optional, Tuple, List
 from config_manager import WatermarkConfig
+from fontTools.ttLib import TTFont
+import matplotlib.font_manager as fm
 
 
 class ImageProcessor:
@@ -61,54 +63,97 @@ class ImageProcessor:
     
     def add_text_watermark(self, image: Image.Image, config: WatermarkConfig) -> Image.Image:
         """添加文本水印"""
+        # 确保文本是字符串类型
+        text = str(config.text_content)
+        
         # 创建一个透明的水印层
         watermark = Image.new('RGBA', image.size, (255, 255, 255, 0))
         draw = ImageDraw.Draw(watermark)
         
         # 设置字体
+        font = None
+        font_path = config.font_family  # 现在config.font_family存储的是字体路径
+        
+        # 尝试直接使用配置中的字体路径
         try:
-            font = ImageFont.truetype(config.font_family, config.font_size)
-        except:
-            # 如果指定的字体不可用，使用默认字体
-            try:
-                # 尝试使用系统默认字体并设置字号
-                # 先尝试获取默认字体路径
-                import os
-                import sys
-                # 根据不同操作系统尝试获取默认字体
-                if sys.platform == 'win32':
-                    # Windows默认字体
-                    default_fonts = [
-                        'C:/Windows/Fonts/arial.ttf',
-                        'C:/Windows/Fonts/simhei.ttf',  # 黑体
-                        'C:/Windows/Fonts/simsun.ttc'   # 宋体
-                    ]
-                    font_path = None
-                    for path in default_fonts:
-                        if os.path.exists(path):
-                            font_path = path
-                            break
-                    if font_path:
-                        font = ImageFont.truetype(font_path, config.font_size)
-                    else:
-                        # 作为最后的备选方案
-                        font = ImageFont.load_default()
-                else:
-                    # Linux/MacOS默认字体
-                    font = ImageFont.load_default()
-                    # 尝试使用默认字体并调整字号
-                    # 在Linux/Mac上，我们可以尝试使用PIL的Freetype字体
+            if font_path:
+                print(f"尝试加载字体路径: {font_path}")
+                # 直接使用路径加载字体
+                font = ImageFont.truetype(font_path, config.font_size)
+                print(f"成功加载字体: {font_path}")
+                
+                # 测试字体是否支持中文
+                try:
+                    test_draw = ImageDraw.Draw(Image.new('RGBA', (1, 1), (255, 255, 255, 0)))
+                    test_text = "测试"
+                    # 尝试使用textbbox或textsize获取文本尺寸
                     try:
-                        from PIL import features
-                        if features.check('freetype'):
-                            font = ImageFont.truetype('Arial.ttf', config.font_size) if os.path.exists('Arial.ttf') else ImageFont.load_default()
+                        test_draw.textbbox((0, 0), test_text, font=font)
                     except:
-                        pass
+                        test_draw.textsize(test_text, font=font)
+                    print("字体支持中文")
+                except Exception as e:
+                    print(f"字体可能不支持中文: {e}，尝试使用系统中文字体")
+                    font = None
+            else:
+                print("未指定字体路径")
+        except Exception as e:
+            print(f"加载指定字体路径失败: {e}")
+        
+        # 如果指定字体失败或不支持中文，尝试使用系统中文字体
+        if font is None:
+            print("尝试使用系统中文字体")
+            import os
+            import sys
+            
+            # 定义更多支持中文的字体路径
+            chinese_fonts = [
+                # Windows 常用中文字体
+                'C:/Windows/Fonts/simhei.ttf',      # 黑体
+                'C:/Windows/Fonts/simsun.ttc',      # 宋体
+                'C:/Windows/Fonts/msyh.ttc',        # 微软雅黑
+                'C:/Windows/Fonts/msyhbd.ttc',      # 微软雅黑 粗体
+                'C:/Windows/Fonts/msyhl.ttc',       # 微软雅黑 细体
+                'C:/Windows/Fonts/STKAITI.ttf',     # 楷体
+                'C:/Windows/Fonts/STSONG.ttf',      # 宋体
+                'C:/Windows/Fonts/STXIHEI.ttf',     # 细黑
+                'C:/Windows/Fonts/STXINGKA.ttf',    # 行楷
+                'C:/Windows/Fonts/STFANGSO.ttf',    # 仿宋
+                # 当前目录可能存在的字体文件
+                'simhei.ttf',
+                'msyh.ttc'
+            ]
+            
+            # 遍历查找可用的中文字体
+            for path in chinese_fonts:
+                try:
+                    if os.path.exists(path):
+                        print(f"找到中文字体: {path}")
+                        font_path = path
+                        font = ImageFont.truetype(path, config.font_size)
+                        # 测试字体是否支持中文
+                        test_draw = ImageDraw.Draw(Image.new('RGBA', (1, 1), (255, 255, 255, 0)))
+                        test_text = "测试"
+                        # 尝试使用textbbox或textsize获取文本尺寸
+                        try:
+                            test_draw.textbbox((0, 0), test_text, font=font)
+                        except:
+                            test_draw.textsize(test_text, font=font)
+                        print("字体支持中文，使用该字体")
+                        break
+                except Exception as e:
+                    print(f"尝试加载字体 {path} 失败: {e}")
+        
+        # 如果仍然没有找到支持中文的字体，使用PIL默认字体作为最后的备选
+        if font is None:
+            print("未找到支持中文的字体，使用PIL默认字体")
+            try:
+                font = ImageFont.load_default()
             except:
                 font = None
+                print("无法加载默认字体")
         
         # 获取文本尺寸
-        text = config.text_content
         if font:
             try:
                 # 使用getbbox获取文本边界框（PIL 10.0+支持）
@@ -117,15 +162,25 @@ class ImageProcessor:
                 text_height = bbox[3] - bbox[1]
             except:
                 # 兼容性处理
-                text_width, text_height = draw.textsize(text, font=font)
+                try:
+                    text_width, text_height = draw.textsize(text, font=font)
+                except Exception as e:
+                    print(f"获取文本尺寸失败: {e}")
+                    # 默认尺寸估计
+                    text_width = len(text) * 12
+                    text_height = 20
         else:
             # 默认尺寸估计
             text_width = len(text) * 12
             text_height = 20
         
+        # print(f"文本尺寸: 宽={text_width}, 高={text_height}")
+        
         # 计算水印位置
         pos_x = int((image.width - text_width) * config.position_x)
         pos_y = int((image.height - text_height) * config.position_y)
+        
+        # print(f"水印位置: x={pos_x}, y={pos_y}")
         
         # 解析颜色
         color = self._parse_color(config.font_color)
@@ -221,7 +276,6 @@ class ImageProcessor:
     def process_image(self, image: Image.Image, config: WatermarkConfig) -> Image.Image:
         """处理图片，添加水印"""
         if config.watermark_type == "text":
-            print(f"添加文本水印: {config}")
             return self.add_text_watermark(image, config)
         elif config.watermark_type == "image" and config.image_path:
             return self.add_image_watermark(image, config.image_path, config)
@@ -273,11 +327,49 @@ class ImageProcessor:
         thumbnail.thumbnail(size, Image.LANCZOS)
         return thumbnail
     
-    def get_supported_fonts(self) -> List[str]:
-        """获取系统支持的字体列表"""
-        # 这个方法在实际使用中可以通过其他方式实现
-        # 这里返回一些常见字体作为默认值
-        return [
-            "Arial", "SimHei", "Microsoft YaHei", "SimSun", 
-            "KaiTi", "FangSong", "Courier New", "Times New Roman"
-        ]
+    def check_chinese_support_fonttools(self,font_path):
+        """
+        使用fonttools快速检测中文支持
+        """
+        try:
+            font = TTFont(font_path)
+            cmap_table = font['cmap']
+            
+            for table in cmap_table.tables:
+                if table.format == 4:
+                    cmap = table.cmap
+                    # 检查基本汉字范围（CJK统一汉字）
+                    test_codepoints = [
+                        0x4E2D,  # "中"
+                        0x6587,  # "文"
+                        0x6D4B,  # "测"
+                        0x8BD5,  # "试"
+                    ]
+                    
+                    supported = sum(1 for cp in test_codepoints if cp in cmap)
+                    return supported >= 3  # 至少支持3个测试字符
+                    
+            return False
+        except:
+            return False
+    def get_supported_fonts(self):
+        """
+        快速获取支持中文的字体
+        """
+        chinese_fonts = []
+        all_fonts = fm.findSystemFonts()
+        
+        for font_path in all_fonts:
+            try:
+                if self.check_chinese_support_fonttools(font_path):
+                    font_prop = fm.FontProperties(fname=font_path)
+                    font_name = font_prop.get_name()
+                    if '?' not in font_name:
+                        chinese_fonts.append({
+                            'name': font_name,
+                            'path': font_path,
+                        })
+            except:
+                continue
+        # print(f"支持中文的字体: {chinese_fonts}")
+        return chinese_fonts
